@@ -1,0 +1,104 @@
+from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telegram.ext import (
+    Application, CommandHandler, MessageHandler,
+    filters, ContextTypes, ConversationHandler
+)
+
+BOT_TOKEN = "7554228349:AAEiGdw0dveHdGrFk3IHf92wDOwRa8PgXUo"
+ADMIN_ID = 5374390102  # Sənin Telegram ID-n
+
+(YIL, MARKA, MODEL, YAZI, RENK) = range(5)
+order_counter = 0
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🚗 Zəhmət olmasa avtomobilin *istehsal ilini* daxil edin:", parse_mode="Markdown")
+    return YIL
+
+async def year(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['year'] = update.message.text
+    await update.message.reply_text("🚘 Avtomobilin *markasını* yazın:")
+    return MARKA
+
+async def brand(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['brand'] = update.message.text
+    await update.message.reply_text("🔧 Avtomobilin *modelini* yazın:")
+    return MODEL
+
+async def model(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['model'] = update.message.text
+    await update.message.reply_text("✍️ Alt hissəyə yazılacaq mətni yazın:")
+    return YAZI
+
+async def text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['text'] = update.message.text
+    reply_markup = ReplyKeyboardMarkup(
+        [["Açıq rəng", "Qara rəng"]],
+        resize_keyboard=True, one_time_keyboard=True
+    )
+    await update.message.reply_text("🎨 Rəngi seçin:", reply_markup=reply_markup)
+    return RENK
+
+async def color(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global order_counter
+    order_counter += 1
+    order_code = f"CVA{order_counter:02d}"
+    context.user_data['color'] = update.message.text
+
+    user = update.effective_user
+    full_name = f"{user.first_name or ''} {user.last_name or ''}".strip()
+    telegram_id = user.id
+
+    order_message = (
+        f"📥 *Yeni sifariş gəldi!*\n\n"
+        f"👤 İstifadəçi: {full_name}\n"
+        f"🆔 Telegram ID: `{telegram_id}`\n"
+        f"📦 Sifariş Kodu: `{order_code}`\n"
+        f"🚗 İl: {context.user_data['year']}\n"
+        f"🚙 Marka: {context.user_data['brand']}\n"
+        f"🛠 Model: {context.user_data['model']}\n"
+        f"✍️ Yazı: {context.user_data['text']}\n"
+        f"🎨 Rəng: {context.user_data['color']}"
+    )
+
+    # Adminə göndər (yalnız admin görəcək)
+    await context.bot.send_message(chat_id=ADMIN_ID, text=order_message, parse_mode="Markdown")
+
+    # Müştəriyə cavab
+    whatsapp_link = f"https://wa.me/994554124042?text=Sifariş%20kodum%20{order_code}%20-%20Ödəniş%20çeki%20əlavə%20edirəm"
+    await update.message.reply_text(
+        f"✅ Sifariş qeydə alındı!\n\n"
+        f"📦 Sifariş kodu: `{order_code}`\n"
+        f"💳 Zəhmət olmasa bu hesaba 15 AZN ödəniş edin:\n"
+        f"`4169 7388 1731 3939`\n\n"
+        f"📤 Ödəniş çekini və sifariş kodunu göndərmək üçün:\n"
+        f"[WhatsApp-a keçid]({whatsapp_link})",
+        parse_mode="Markdown",
+        reply_markup=ReplyKeyboardRemove()
+    )
+
+    return ConversationHandler.END
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("❌ Sifariş ləğv edildi.", reply_markup=ReplyKeyboardRemove())
+    return ConversationHandler.END
+
+def main():
+    app = Application.builder().token(BOT_TOKEN).build()
+
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("start", start)],
+        states={
+            YIL: [MessageHandler(filters.TEXT & ~filters.COMMAND, year)],
+            MARKA: [MessageHandler(filters.TEXT & ~filters.COMMAND, brand)],
+            MODEL: [MessageHandler(filters.TEXT & ~filters.COMMAND, model)],
+            YAZI: [MessageHandler(filters.TEXT & ~filters.COMMAND, text)],
+            RENK: [MessageHandler(filters.TEXT & ~filters.COMMAND, color)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
+
+    app.add_handler(conv_handler)
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
